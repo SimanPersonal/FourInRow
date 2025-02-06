@@ -79,8 +79,14 @@
                 analyser.fftSize = 2048;
                 source.connect(analyser);
                 
-                mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
+                // Store raw audio data for playback
+                const audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
+                source.connect(audioProcessor);
+                audioProcessor.connect(audioContext.destination);
+                
+                audioProcessor.onaudioprocess = (e) => {
+                    const inputData = e.inputBuffer.getChannelData(0);
+                    audioChunks.push(new Float32Array(inputData));
                 };
                 
                 mediaRecorder.start(100);
