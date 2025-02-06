@@ -15,6 +15,7 @@
             font-family: monospace;
         }
     </style>
+    <script src="https://cdn.jsdelivr.net/npm/tone@14.7.77/build/Tone.min.js"></script>
 </head>
 <body>
     <div class="controls">
@@ -30,6 +31,41 @@
         let audioChunks = [];
         let analyser;
         let recordedFrequencies = [];
+        const piano = new Tone.Sampler({
+            urls: {
+                A0: "A0.mp3",
+                C1: "C1.mp3",
+                "D#1": "Ds1.mp3",
+                "F#1": "Fs1.mp3",
+                A1: "A1.mp3",
+                C2: "C2.mp3",
+                "D#2": "Ds2.mp3",
+                "F#2": "Fs2.mp3",
+                A2: "A2.mp3",
+                C3: "C3.mp3",
+                "D#3": "Ds3.mp3",
+                "F#3": "Fs3.mp3",
+                A3: "A3.mp3",
+                C4: "C4.mp3",
+                "D#4": "Ds4.mp3",
+                "F#4": "Fs4.mp3",
+                A4: "A4.mp3",
+                C5: "C5.mp3",
+                "D#5": "Ds5.mp3",
+                "F#5": "Fs5.mp3",
+                A5: "A5.mp3",
+                C6: "C6.mp3",
+                "D#6": "Ds6.mp3",
+                "F#6": "Fs6.mp3",
+                A6: "A6.mp3",
+                C7: "C7.mp3",
+                "D#7": "Ds7.mp3",
+                "F#7": "Fs7.mp3",
+                A7: "A7.mp3",
+                C8: "C8.mp3"
+            },
+            baseUrl: "https://tonejs.github.io/audio/salamander/",
+        }).toDestination();
         
         async function startRecording() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -97,41 +133,29 @@
             }
         }
 
-        function playback() {
+        function frequencyToNote(frequency) {
+            const A4 = 440;
+            const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+            const halfStepsFromA4 = Math.round(12 * Math.log2(frequency / A4));
+            const octave = Math.floor((halfStepsFromA4 + 57) / 12); // 57 is the number of semitones from C0 to A4
+            const noteIndex = (halfStepsFromA4 + 57) % 12;
+            return `${notes[noteIndex]}${octave}`;
+        }
+
+        async function playback() {
             if (recordedFrequencies.length === 0) {
                 document.getElementById('status').textContent = 'No recording to play';
                 return;
             }
-            
-            const ctx = new (window.AudioContext || window.webkitAudioContext)();
-            
-            // Piano-like envelope settings
-            const attackTime = 0.01;
-            const decayTime = 0.1;
-            const sustainLevel = 0.7;
-            const releaseTime = 0.2;
-            
-            recordedFrequencies.forEach((freq, index) => {
-                const oscillator = ctx.createOscillator();
-                const gainNode = ctx.createGain();
-                
-                oscillator.type = 'triangle'; // More piano-like sound
-                oscillator.frequency.setValueAtTime(freq, ctx.currentTime + index * 0.1);
-                
-                // Apply envelope
-                gainNode.gain.setValueAtTime(0, ctx.currentTime + index * 0.1);
-                gainNode.gain.linearRampToValueAtTime(1, ctx.currentTime + index * 0.1 + attackTime);
-                gainNode.gain.linearRampToValueAtTime(sustainLevel, ctx.currentTime + index * 0.1 + attackTime + decayTime);
-                gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + index * 0.1 + attackTime + decayTime + releaseTime);
-                
-                oscillator.connect(gainNode);
-                gainNode.connect(ctx.destination);
-                
-                oscillator.start(ctx.currentTime + index * 0.1);
-                oscillator.stop(ctx.currentTime + index * 0.1 + attackTime + decayTime + releaseTime);
-            });
-            
+
+            await Tone.start();
             document.getElementById('status').textContent = 'Playing back...';
+            
+            const now = Tone.now();
+            recordedFrequencies.forEach((freq, index) => {
+                const note = frequencyToNote(freq);
+                piano.triggerAttackRelease(note, "8n", now + index * 0.25);
+            });
         }
     </script>
 </body>
