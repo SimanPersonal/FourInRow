@@ -26,53 +26,63 @@
     <div id="status">Ready to play...</div>
 
     <script>
-        const piano = new Tone.Sampler({
-            urls: {
-                A0: "A0.mp3",
-                C1: "C1.mp3",
-                "D#1": "Ds1.mp3",
-                "F#1": "Fs1.mp3",
-                A1: "A1.mp3",
-                C2: "C2.mp3",
-                "D#2": "Ds2.mp3",
-                "F#2": "Fs2.mp3",
-                A2: "A2.mp3",
-                C3: "C3.mp3",
-                "D#3": "Ds3.mp3",
-                "F#3": "Fs3.mp3",
-                A3: "A3.mp3",
-                C4: "C4.mp3",
-                "D#4": "Ds4.mp3",
-                "F#4": "Fs4.mp3",
-                A4: "A4.mp3",
-                C5: "C5.mp3",
-                "D#5": "Ds5.mp3",
-                "F#5": "Fs5.mp3",
-                A5: "A5.mp3",
-                C6: "C6.mp3",
-                "D#6": "Ds6.mp3",
-                "F#6": "Fs6.mp3",
-                A6: "A6.mp3",
-                C7: "C7.mp3",
-                "D#7": "Ds7.mp3",
-                "F#7": "Fs7.mp3",
-                A7: "A7.mp3",
-                C8: "C8.mp3"
-            },
-            baseUrl: "https://tonejs.github.io/audio/salamander/",
-        }).toDestination();
+        let piano;
+
+        async function initPiano() {
+            piano = new Tone.Sampler({
+                urls: {
+                    A0: "A0.mp3",
+                    C1: "C1.mp3",
+                    "D#1": "Ds1.mp3",
+                    "F#1": "Fs1.mp3",
+                    A1: "A1.mp3",
+                    C2: "C2.mp3",
+                    "D#2": "Ds2.mp3",
+                    "F#2": "Fs2.mp3",
+                    A2: "A2.mp3",
+                    C3: "C3.mp3",
+                    "D#3": "Ds3.mp3",
+                    "F#3": "Fs3.mp3",
+                    A3: "A3.mp3",
+                    C4: "C4.mp3",
+                    "D#4": "Ds4.mp3",
+                    "F#4": "Fs4.mp3",
+                    A4: "A4.mp3",
+                    C5: "C5.mp3",
+                    "D#5": "Ds5.mp3",
+                    "F#5": "Fs5.mp3",
+                    A5: "A5.mp3",
+                    C6: "C6.mp3",
+                    "D#6": "Ds6.mp3",
+                    "F#6": "Fs6.mp3",
+                    A6: "A6.mp3",
+                    C7: "C7.mp3",
+                    "D#7": "Ds7.mp3",
+                    "F#7": "Fs7.mp3",
+                    A7: "A7.mp3",
+                    C8: "C8.mp3"
+                },
+                baseUrl: "https://tonejs.github.io/audio/salamander/",
+                onload: () => {
+                    document.getElementById('status').textContent = 'Piano loaded! Ready to play...';
+                }
+            }).toDestination();
+        }
+
+        // Initialize piano on page load
+        window.addEventListener('load', initPiano);
 
         // The Final Countdown main melody notes and durations
         const finalCountdown = [
-            { note: "Em", duration: "2n", time: 0 },
+            { note: "E4", duration: "2n", time: 0 },
             { note: "C5", duration: "4n", time: "2n" },
             { note: "B4", duration: "4n", time: "2n + 4n" },
             { note: "A4", duration: "1n", time: "1m" },
-            { note: "Em", duration: "2n", time: "2m" },
+            { note: "E4", duration: "2n", time: "2m" },
             { note: "C5", duration: "4n", time: "2m + 2n" },
             { note: "B4", duration: "4n", time: "2m + 2n + 4n" },
             { note: "A4", duration: "1n", time: "3m" },
-            { note: "Em", duration: "2n", time: "4m" },
+            { note: "E4", duration: "2n", time: "4m" },
             { note: "C5", duration: "4n", time: "4m + 2n" },
             { note: "B4", duration: "4n", time: "4m + 2n + 4n" },
             { note: "A4", duration: "2n", time: "5m" },
@@ -81,19 +91,28 @@
         ];
 
         async function playFinalCountdown() {
-            await Tone.start();
-            document.getElementById('status').textContent = 'Playing The Final Countdown...';
-            
-            const now = Tone.now();
-            
-            finalCountdown.forEach(({note, duration, time}) => {
-                piano.triggerAttackRelease(note, duration, now + Tone.Time(time).toSeconds());
-            });
+            try {
+                if (!piano) {
+                    document.getElementById('status').textContent = 'Error: Piano not loaded yet!';
+                    return;
+                }
 
-            // Reset status after song finishes
-            setTimeout(() => {
-                document.getElementById('status').textContent = 'Ready to play...';
-            }, Tone.Time("6m").toMilliseconds() + 1000);
+                await Tone.start();
+                document.getElementById('status').textContent = 'Playing The Final Countdown...';
+                
+                const now = Tone.now();
+                
+                finalCountdown.forEach(({note, duration, time}) => {
+                    piano.triggerAttackRelease(note, duration, now + Tone.Time(time).toSeconds());
+                });
+
+                // Reset status after song finishes
+                setTimeout(() => {
+                    document.getElementById('status').textContent = 'Ready to play...';
+                }, Tone.Time("6m").toMilliseconds() + 1000);
+            } catch (error) {
+                document.getElementById('status').textContent = 'Error playing: ' + error.message;
+            }
         }
     </script>
 </body>
