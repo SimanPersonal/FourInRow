@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Whistle to Piano</title>
+    <style>
+        .controls {
+            margin: 20px;
+        }
+        button {
+            padding: 10px;
+            margin: 5px;
+        }
+        #status {
+            margin: 20px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button onclick="startRecording()">Start Recording</button>
+        <button onclick="stopRecording()">Stop Recording</button>
+        <button onclick="playback()">Play as Piano</button>
+    </div>
+    <div id="status">Ready to record...</div>
+
+    <script>
+        let audioContext;
+        let mediaRecorder;
+        let audioChunks = [];
+        let analyser;
+        let recordedFrequencies = [];
+        
+        async function startRecording() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                
+                const source = audioContext.createMediaStreamSource(stream);
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 2048;
+                source.connect(analyser);
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    audioChunks.push(event.data);
+                };
+                
+                mediaRecorder.start(100);
+                document.getElementById('status').textContent = 'Recording...';
+                
+                // Start frequency detection
+                detectPitch();
+                
+            } catch (err) {
+                console.error('Error accessing microphone:', err);
+                document.getElementById('status').textContent = 'Error: ' + err.message;
+            }
+        }
+
+        function detectPitch() {
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Float32Array(bufferLength);
+            
+            function analyze() {
+                if (mediaRecorder.state === 'recording') {
+                    analyser.getFloatFrequencyData(dataArray);
+                    
+                    // Find the peak frequency
+                    let maxValue = -Infinity;
+                    let maxIndex = 0;
+                    
+                    for (let i = 0; i < bufferLength; i++) {
+                        if (dataArray[i] > maxValue) {
+                            maxValue = dataArray[i];
+                            maxIndex = i;
+                        }
+                    }
+                    
+                    const frequency = maxIndex * audioContext.sampleRate / analyser.fftSize;
+                    if (frequency > 100 && maxValue > -50) { // Filter out noise
+                        recordedFrequencies.push(frequency);
+                    }
+                    
+                    requestAnimationFrame(analyze);
+                }
+            }
+            
+            analyze();
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                document.getElementById('status').textContent = 'Recording stopped';
+            }
+        }
+
+        function playback() {
+            if (recordedFrequencies.length === 0) {
+                document.getElementById('status').textContent = 'No recording to play';
+                return;
+            }
+            
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            
+            // Piano-like envelope settings
+            const attackTime = 0.01;
+            const decayTime = 0.1;
+            const sustainLevel = 0.7;
+            const releaseTime = 0.2;
+            
+            recordedFrequencies.forEach((freq, index) => {
+                const oscillator = ctx.createOscillator();
+                const gainNode = ctx.createGain();
+                
+                oscillator.type = 'triangle'; // More piano-like sound
+                oscillator.frequency.setValueAtTime(freq, ctx.currentTime + index * 0.1);
+                
+                // Apply envelope
+                gainNode.gain.setValueAtTime(0, ctx.currentTime + index * 0.1);
+                gainNode.gain.linearRampToValueAtTime(1, ctx.currentTime + index * 0.1 + attackTime);
+                gainNode.gain.linearRampToValueAtTime(sustainLevel, ctx.currentTime + index * 0.1 + attackTime + decayTime);
+                gainNode.gain.linearRampToValueAtTime(0, ctx.currentTime + index * 0.1 + attackTime + decayTime + releaseTime);
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(ctx.destination);
+                
+                oscillator.start(ctx.currentTime + index * 0.1);
+                oscillator.stop(ctx.currentTime + index * 0.1 + attackTime + decayTime + releaseTime);
+            });
+            
+            document.getElementById('status').textContent = 'Playing back...';
+        }
+    </script>
+</body>
+</html>
