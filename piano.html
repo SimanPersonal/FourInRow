@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Whistle to Piano</title>
+    <title>Final Countdown Piano</title>
     <style>
         .controls {
             margin: 20px;
@@ -9,6 +9,8 @@
         button {
             padding: 10px;
             margin: 5px;
+            font-size: 16px;
+            cursor: pointer;
         }
         #status {
             margin: 20px;
@@ -19,18 +21,11 @@
 </head>
 <body>
     <div class="controls">
-        <button onclick="startRecording()">Start Recording</button>
-        <button onclick="stopRecording()">Stop Recording</button>
-        <button onclick="playback()">Play as Piano</button>
+        <button onclick="playFinalCountdown()">Play Final Countdown 🎹</button>
     </div>
-    <div id="status">Ready to record...</div>
+    <div id="status">Ready to play...</div>
 
     <script>
-        let audioContext;
-        let mediaRecorder;
-        let audioChunks = [];
-        let analyser;
-        let recordedFrequencies = [];
         const piano = new Tone.Sampler({
             urls: {
                 A0: "A0.mp3",
@@ -66,102 +61,39 @@
             },
             baseUrl: "https://tonejs.github.io/audio/salamander/",
         }).toDestination();
-        
-        async function startRecording() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                
-                const source = audioContext.createMediaStreamSource(stream);
-                analyser = audioContext.createAnalyser();
-                analyser.fftSize = 2048;
-                source.connect(analyser);
-                
-                // Store raw audio data for playback
-                const audioProcessor = audioContext.createScriptProcessor(4096, 1, 1);
-                source.connect(audioProcessor);
-                audioProcessor.connect(audioContext.destination);
-                
-                audioProcessor.onaudioprocess = (e) => {
-                    const inputData = e.inputBuffer.getChannelData(0);
-                    audioChunks.push(new Float32Array(inputData));
-                };
-                
-                mediaRecorder.start(100);
-                document.getElementById('status').textContent = 'Recording...';
-                
-                // Start frequency detection
-                detectPitch();
-                
-            } catch (err) {
-                console.error('Error accessing microphone:', err);
-                document.getElementById('status').textContent = 'Error: ' + err.message;
-            }
-        }
 
-        function detectPitch() {
-            const bufferLength = analyser.frequencyBinCount;
-            const dataArray = new Float32Array(bufferLength);
-            
-            function analyze() {
-                if (mediaRecorder.state === 'recording') {
-                    analyser.getFloatFrequencyData(dataArray);
-                    
-                    // Find the peak frequency
-                    let maxValue = -Infinity;
-                    let maxIndex = 0;
-                    
-                    for (let i = 0; i < bufferLength; i++) {
-                        if (dataArray[i] > maxValue) {
-                            maxValue = dataArray[i];
-                            maxIndex = i;
-                        }
-                    }
-                    
-                    const frequency = maxIndex * audioContext.sampleRate / analyser.fftSize;
-                    if (frequency > 100 && maxValue > -50) { // Filter out noise
-                        recordedFrequencies.push(frequency);
-                    }
-                    
-                    requestAnimationFrame(analyze);
-                }
-            }
-            
-            analyze();
-        }
+        // The Final Countdown main melody notes and durations
+        const finalCountdown = [
+            { note: "Em", duration: "2n", time: 0 },
+            { note: "C5", duration: "4n", time: "2n" },
+            { note: "B4", duration: "4n", time: "2n + 4n" },
+            { note: "A4", duration: "1n", time: "1m" },
+            { note: "Em", duration: "2n", time: "2m" },
+            { note: "C5", duration: "4n", time: "2m + 2n" },
+            { note: "B4", duration: "4n", time: "2m + 2n + 4n" },
+            { note: "A4", duration: "1n", time: "3m" },
+            { note: "Em", duration: "2n", time: "4m" },
+            { note: "C5", duration: "4n", time: "4m + 2n" },
+            { note: "B4", duration: "4n", time: "4m + 2n + 4n" },
+            { note: "A4", duration: "2n", time: "5m" },
+            { note: "G4", duration: "2n", time: "5m + 2n" },
+            { note: "F#4", duration: "1n", time: "6m" }
+        ];
 
-        function stopRecording() {
-            if (mediaRecorder && mediaRecorder.state === 'recording') {
-                mediaRecorder.stop();
-                document.getElementById('status').textContent = 'Recording stopped';
-            }
-        }
-
-        function frequencyToNote(frequency) {
-            const A4 = 440;
-            const notes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-            const halfStepsFromA4 = Math.round(12 * Math.log2(frequency / A4));
-            const octave = Math.floor((halfStepsFromA4 + 57) / 12); // 57 is the number of semitones from C0 to A4
-            const noteIndex = (halfStepsFromA4 + 57) % 12;
-            return `${notes[noteIndex]}${octave}`;
-        }
-
-        async function playback() {
-            if (recordedFrequencies.length === 0) {
-                document.getElementById('status').textContent = 'No recording to play';
-                return;
-            }
-
+        async function playFinalCountdown() {
             await Tone.start();
-            document.getElementById('status').textContent = 'Playing back...';
+            document.getElementById('status').textContent = 'Playing The Final Countdown...';
             
             const now = Tone.now();
-            recordedFrequencies.forEach((freq, index) => {
-                const note = frequencyToNote(freq);
-                piano.triggerAttackRelease(note, "8n", now + index * 0.25);
+            
+            finalCountdown.forEach(({note, duration, time}) => {
+                piano.triggerAttackRelease(note, duration, now + Tone.Time(time).toSeconds());
             });
+
+            // Reset status after song finishes
+            setTimeout(() => {
+                document.getElementById('status').textContent = 'Ready to play...';
+            }, Tone.Time("6m").toMilliseconds() + 1000);
         }
     </script>
 </body>
