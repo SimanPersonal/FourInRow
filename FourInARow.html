@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Four in a Row</title>
+    <style>
+        .board {
+            background-color: blue;
+            padding: 10px;
+            display: inline-block;
+        }
+        .cell {
+            width: 50px;
+            height: 50px;
+            background-color: white;
+            border-radius: 50%;
+            display: inline-block;
+            margin: 2px;
+            transition: background-color 0.3s;
+        }
+        .red {
+            background-color: red;
+        }
+        .yellow {
+            background-color: yellow;
+        }
+        .falling {
+            animation: fall 0.5s ease-in;
+        }
+        @keyframes fall {
+            from {
+                transform: translateY(-300px);
+            }
+            to {
+                transform: translateY(0);
+            }
+        }
+        #messages {
+            margin-top: 20px;
+            font-family: Arial, sans-serif;
+        }
+        #roleSelection {
+            margin-bottom: 20px;
+        }
+        .message-box {
+            background-color: #e8f5e9;
+            border: 1px solid #81c784;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .input-prompt {
+            background-color: #e3f2fd;
+            border: 1px solid #64b5f6;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .copy-button {
+            background-color: #2196f3;
+            color: white;
+            border: none;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin-left: 10px;
+        }
+        .instruction {
+            background-color: #fff3e0;
+            border: 1px solid #ffb74d;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Four in a Row</h1>
+    <div id="roleSelection">
+        <div class="instruction">
+            👋 Welcome! Choose your role to start the game:
+        </div>
+        <button onclick="startAsInitiator()">Start as Initiator (Player 1)</button>
+        <button onclick="startAsReceiver()">Start as Receiver (Player 2)</button>
+    </div>
+    <div id="connectionControls" style="display: none;">
+        <button onclick="handleAnswer()">Set Answer from Other Player</button>
+    </div>
+    <div id="currentPlayer">Current Player: Red</div>
+    <div id="board" class="board"></div>
+    <div id="messages"></div>
+
+    <script>
+        const ROWS = 6;
+        const COLS = 7;
+        let currentPlayer = 'red';
+        let board = Array(ROWS).fill().map(() => Array(COLS).fill(null));
+        let gameActive = true;
+
+        const peerConnection = new RTCPeerConnection();
+        let dataChannel;
+
+        function createBoard() {
+            const boardElement = document.getElementById('board');
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const cell = document.createElement('div');
+                    cell.className = 'cell';
+                    cell.dataset.col = col;
+                    cell.onclick = () => gameActive && makeMove(col);
+                    boardElement.appendChild(cell);
+                }
+                boardElement.appendChild(document.createElement('br'));
+            }
+        }
+
+        function displayMessage(message) {
+            const messagesDiv = document.getElementById('messages');
+            messagesDiv.innerHTML += `<p>${message}</p>`;
+        }
+
+        function showMessageBox(title, content, copyable = true) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message-box';
+            
+            const titleEl = document.createElement('strong');
+            titleEl.textContent = title;
+            messageDiv.appendChild(titleEl);
+
+            const contentEl = document.createElement('pre');
+            contentEl.style.marginTop = '5px';
+            contentEl.textContent = content;
+            messageDiv.appendChild(contentEl);
+
+            if (copyable) {
+                const copyButton = document.createElement('button');
+                copyButton.className = 'copy-button';
+                copyButton.textContent = '📋 Copy';
+                copyButton.onclick = () => {
+                    navigator.clipboard.writeText(content);
+                    copyButton.textContent = '✅ Copied!';
+                    setTimeout(() => copyButton.textContent = '📋 Copy', 2000);
+                };
+                messageDiv.appendChild(copyButton);
+            }
+
+            document.getElementById('messages').appendChild(messageDiv);
+        }
+
+        function showInputPrompt(title, placeholder, callback) {
+            const promptDiv = document.createElement('div');
+            promptDiv.className = 'input-prompt';
+            
+            const titleEl = document.createElement('div');
+            titleEl.innerHTML = `<strong>${title}</strong>`;
+            promptDiv.appendChild(titleEl);
+
+            const input = document.createElement('textarea');
+            input.style.width = '100%';
+            input.style.marginTop = '5px';
+            input.style.minHeight = '60px';
+            input.placeholder = placeholder;
+            promptDiv.appendChild(input);
+
+            const submitButton = document.createElement('button');
+            submitButton.textContent = 'Submit';
+            submitButton.style.marginTop = '5px';
+            submitButton.onclick = () => callback(input.value);
+            promptDiv.appendChild(submitButton);
+
+            document.getElementById('messages').appendChild(promptDiv);
+        }
+
+        function initConnection() {
+            showMessageBox("📝 Instructions", 
+                "1. Wait for the offer to appear below\n" +
+                "2. Send the offer to Player 2\n" +
+                "3. Wait for Player 2's answer\n" +
+                "4. Click 'Set Answer' when you receive it\n" +
+                "5. Exchange ICE candidates when they appear"
+            );
+
+            displayMessage("Initializing connection as initiator...");
+            dataChannel = peerConnection.createDataChannel("game");
+
+            dataChannel.onopen = () => {
+                displayMessage("✅ Data channel is now open and ready for communication");
+                displayMessage("Connection state: " + dataChannel.readyState);
+            };
+
+            dataChannel.onclose = () => {
+                displayMessage("❌ Data channel closed");
+            };
+
+            dataChannel.onerror = (error) => {
+                displayMessage("❌ Data channel error: " + error);
+            };
+
+            dataChannel.onmessage = (event) => {
+                displayMessage("📥 Received data: " + event.data);
+                handleIncomingData(event.data);
+            };
+
+            peerConnection.createOffer().then(offer => {
+                return peerConnection.setLocalDescription(offer);
+            }).then(() => {
+                showMessageBox("📤 Send this offer to Player 2", 
+                    JSON.stringify(peerConnection.localDescription)
+                );
+            });
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    showMessageBox("📡 Send this ICE candidate to Player 2", 
+                        JSON.stringify(event.candidate)
+                    );
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                displayMessage("Connection state changed to: " + peerConnection.connectionState);
+                switch(peerConnection.connectionState) {
+                    case "connected":
+                        displayMessage("✅ Peers connected!");
+                        break;
+                    case "disconnected":
+                        displayMessage("❌ Peers disconnected!");
+                        break;
+                    case "failed":
+                        displayMessage("❌ Connection failed!");
+                        break;
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                displayMessage("ICE connection state: " + peerConnection.iceConnectionState);
+            };
+        }
+
+        function handleIncomingData(data) {
+            try {
+                displayMessage("🔄 Processing received data: " + data);
+                const message = JSON.parse(data);
+                if (message.type === 'move') {
+                    displayMessage(`📥 Received move for column ${message.col}`);
+                    makeMove(message.col, true);
+                } else {
+                    displayMessage("❓ Unknown message type: " + message.type);
+                }
+            } catch (error) {
+                displayMessage("❌ Error handling incoming data: " + error);
+            }
+        }
+
+        function receiveConnection(offer) {
+            showMessageBox("📝 Instructions", 
+                "1. Wait for your answer to appear below\n" +
+                "2. Send the answer to Player 1\n" +
+                "3. Exchange ICE candidates when they appear"
+            );
+
+            displayMessage("Receiving connection attempt...");
+            
+            peerConnection.ondatachannel = (event) => {
+                displayMessage("📡 Data channel received from peer");
+                dataChannel = event.channel;
+                
+                dataChannel.onopen = () => {
+                    displayMessage("✅ Data channel is now open and ready for communication");
+                    displayMessage("Connection state: " + dataChannel.readyState);
+                };
+
+                dataChannel.onclose = () => {
+                    displayMessage("❌ Data channel closed");
+                };
+
+                dataChannel.onerror = (error) => {
+                    displayMessage("❌ Data channel error: " + error);
+                };
+
+                dataChannel.onmessage = (event) => {
+                    displayMessage("📥 Received data: " + event.data);
+                    handleIncomingData(event.data);
+                };
+            };
+
+            peerConnection.setRemoteDescription(new RTCSessionDescription(offer))
+                .then(() => {
+                    displayMessage("✅ Remote description set successfully");
+                    displayMessage("Creating answer...");
+                    return peerConnection.createAnswer();
+                })
+                .then(answer => {
+                    displayMessage("Answer created, setting local description...");
+                    return peerConnection.setLocalDescription(answer);
+                })
+                .then(() => {
+                    displayMessage("✅ Answer created. Send this answer to the initiator:");
+                    displayMessage(JSON.stringify(peerConnection.localDescription));
+                })
+                .catch(error => {
+                    displayMessage("❌ Error in receiver setup: " + error);
+                });
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    showMessageBox("📡 Send this ICE candidate to Player 1", 
+                        JSON.stringify(event.candidate)
+                    );
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                displayMessage("Connection state changed to: " + peerConnection.connectionState);
+                switch(peerConnection.connectionState) {
+                    case "connected":
+                        displayMessage("✅ Peers connected!");
+                        break;
+                    case "disconnected":
+                        displayMessage("❌ Peers disconnected!");
+                        break;
+                    case "failed":
+                        displayMessage("❌ Connection failed!");
+                        break;
+                }
+            };
+
+            peerConnection.oniceconnectionstatechange = () => {
+                displayMessage("ICE connection state: " + peerConnection.iceConnectionState);
+            };
+        }
+
+        function makeMove(col, fromRemote = false) {
+            if (!fromRemote) {
+                if (!dataChannel) {
+                    displayMessage("❌ No data channel available!");
+                    return;
+                }
+                if (dataChannel.readyState !== 'open') {
+                    displayMessage("❌ Data channel is not open! Current state: " + dataChannel.readyState);
+                    return;
+                }
+                try {
+                    const moveData = JSON.stringify({ type: 'move', col });
+                    dataChannel.send(moveData);
+                    displayMessage("📤 Move sent: " + moveData);
+                } catch (error) {
+                    displayMessage("❌ Error sending move: " + error);
+                }
+            }
+
+            for (let row = ROWS - 1; row >= 0; row--) {
+                if (!board[row][col]) {
+                    board[row][col] = currentPlayer;
+                    displayMessage(`Move made: ${currentPlayer} placed in column ${col}, row ${row}`);
+                    
+                    animateFall(row, col).then(() => {
+                        if (checkWin(row, col)) {
+                            gameActive = false;
+                            displayMessage(`🎉 ${currentPlayer.toUpperCase()} wins!`);
+                            setTimeout(() => alert(`${currentPlayer.toUpperCase()} wins!`), 100);
+                            return;
+                        }
+                        
+                        currentPlayer = currentPlayer === 'red' ? 'yellow' : 'red';
+                        document.getElementById('currentPlayer').textContent = 
+                            `Current Player: ${currentPlayer.charAt(0).toUpperCase() + currentPlayer.slice(1)}`;
+                    });
+                    return;
+                }
+            }
+        }
+
+        async function animateFall(row, col) {
+            const cells = document.getElementsByClassName('cell');
+            const index = row * COLS + col;
+            const cell = cells[index];
+            
+            cell.className = `cell ${currentPlayer} falling`;
+            
+            return new Promise(resolve => {
+                setTimeout(() => {
+                    cell.classList.remove('falling');
+                    resolve();
+                }, 500);
+            });
+        }
+
+        function updateBoard() {
+            const cells = document.getElementsByClassName('cell');
+            for (let row = 0; row < ROWS; row++) {
+                for (let col = 0; col < COLS; col++) {
+                    const index = row * COLS + col;
+                    cells[index].className = 'cell ' + (board[row][col] || '');
+                }
+            }
+        }
+
+        function checkWin(row, col) {
+            const directions = [
+                [[0, 1], [0, -1]],  // horizontal
+                [[1, 0], [-1, 0]],  // vertical
+                [[1, 1], [-1, -1]], // diagonal /
+                [[1, -1], [-1, 1]]  // diagonal \
+            ];
+
+            for (const [dir1, dir2] of directions) {
+                let count = 1;
+                count += countDirection(row, col, dir1[0], dir1[1]);
+                count += countDirection(row, col, dir2[0], dir2[1]);
+                if (count >= 4) return true;
+            }
+            return false;
+        }
+
+        function countDirection(row, col, rowDir, colDir) {
+            const player = board[row][col];
+            let count = 0;
+            let currentRow = row + rowDir;
+            let currentCol = col + colDir;
+
+            while (
+                currentRow >= 0 && currentRow < ROWS &&
+                currentCol >= 0 && currentCol < COLS &&
+                board[currentRow][currentCol] === player
+            ) {
+                count++;
+                currentRow += rowDir;
+                currentCol += colDir;
+            }
+
+            return count;
+        }
+
+        function startAsInitiator() {
+            document.getElementById('roleSelection').style.display = 'none';
+            document.getElementById('connectionControls').style.display = 'block';
+            initConnection();
+        }
+
+        function startAsReceiver() {
+            document.getElementById('roleSelection').style.display = 'none';
+            showInputPrompt(
+                "📥 Paste the offer from Player 1",
+                "Example: {\"type\":\"offer\",\"sdp\":\"v=0...\"}", 
+                handleReceiverOffer
+            );
+        }
+
+        function handleReceiverOffer(offerString) {
+            try {
+                const offer = JSON.parse(offerString);
+                if (offer && offer.type === 'offer') {
+                    receiveConnection(offer);
+                    showInputPrompt(
+                        "📥 Paste ICE candidate from Player 1",
+                        "Example: {\"candidate\":\"candidate:...\"}", 
+                        handleIceCandidate
+                    );
+                } else {
+                    throw new Error("Invalid offer format");
+                }
+            } catch (error) {
+                showMessageBox("❌ Error", "Invalid offer format: " + error, false);
+            }
+        }
+
+        function handleAnswer() {
+            showInputPrompt(
+                "📥 Paste the answer from Player 2",
+                "Example: {\"type\":\"answer\",\"sdp\":\"v=0...\"}", 
+                handleInitiatorAnswer
+            );
+        }
+
+        function handleInitiatorAnswer(answerString) {
+            try {
+                const answer = JSON.parse(answerString);
+                if (answer && answer.type === 'answer') {
+                    peerConnection.setRemoteDescription(new RTCSessionDescription(answer))
+                        .then(() => {
+                            showMessageBox("✅ Answer accepted", 
+                                "Now exchange ICE candidates with Player 2"
+                            );
+                            showInputPrompt(
+                                "📥 Paste ICE candidate from Player 2",
+                                "Example: {\"candidate\":\"candidate:...\"}", 
+                                handleIceCandidate
+                            );
+                        });
+                } else {
+                    throw new Error("Invalid answer format");
+                }
+            } catch (error) {
+                showMessageBox("❌ Error", "Invalid answer format: " + error, false);
+            }
+        }
+
+        function handleIceCandidate(candidateString) {
+            try {
+                const candidate = JSON.parse(candidateString);
+                if (candidate && candidate.candidate) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate))
+                        .then(() => {
+                            showMessageBox("✅ ICE candidate added", 
+                                "Keep exchanging ICE candidates as they appear"
+                            );
+                            // Show another input prompt for the next candidate
+                            showInputPrompt(
+                                "📥 Paste next ICE candidate (if any)",
+                                "Example: {\"candidate\":\"candidate:...\"}", 
+                                handleIceCandidate
+                            );
+                        })
+                        .catch(error => {
+                            showMessageBox("❌ Error", "Failed to add ICE candidate: " + error, false);
+                        });
+                } else {
+                    throw new Error("Invalid ICE candidate format");
+                }
+            } catch (error) {
+                showMessageBox("❌ Error", "Invalid ICE candidate format: " + error, false);
+            }
+        }
+
+        // Initialize the game
+        createBoard();
+    </script>
+</body>
+</html>
